@@ -1,7 +1,6 @@
-package main
+package deadcode
 
 import (
-	"flag"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -19,27 +18,30 @@ var (
 	withTestFiles bool
 )
 
-func main() {
-	flag.BoolVar(&withTestFiles, "test", false, "include test files")
-	flag.Parse()
+type Issue struct {
+	Pos             token.Position
+	UnusedIdentName string
+}
+
+func Run(paths []string, processTestFiles bool) ([]Issue, error) {
 	ctx := &Context{
-		withTests: withTestFiles,
+		withTests: processTestFiles,
 	}
-	if flag.NArg() == 0 {
-		ctx.Load(".")
-	} else {
-		ctx.Load(flag.Args()...)
-	}
+	ctx.Load(paths...)
 	report := ctx.Process()
+	var issues []Issue
 	for _, obj := range report {
-		ctx.errorf(obj.Pos(), "%s is unused", obj.Name())
+		issues = append(issues, Issue{
+			Pos:             ctx.Config.Fset.Position(obj.Pos()),
+			UnusedIdentName: obj.Name(),
+		})
 	}
-	os.Exit(exitCode)
+
+	return issues, nil
 }
 
 func fatalf(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, args...)
-	os.Exit(1)
+	panic(fmt.Errorf(format, args...))
 }
 
 type Context struct {
@@ -50,13 +52,7 @@ type Context struct {
 }
 
 func (ctx *Context) Load(args ...string) {
-	for _, arg := range args {
-		if ctx.withTests {
-			ctx.Config.ImportWithTests(arg)
-		} else {
-			ctx.Config.Import(arg)
-		}
-	}
+	ctx.Config.FromArgs(args, ctx.withTests)
 }
 
 // error formats the error to standard error, adding program
@@ -81,6 +77,10 @@ func (ctx *Context) Process() []types.Object {
 	}
 	var allUnused []types.Object
 	for _, pkg := range prog.Imported {
+		unused := doPackage(prog, pkg)
+		allUnused = append(allUnused, unused...)
+	}
+	for _, pkg := range prog.Created {
 		unused := doPackage(prog, pkg)
 		allUnused = append(allUnused, unused...)
 	}
