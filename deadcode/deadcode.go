@@ -84,11 +84,15 @@ func (ctx *Context) Process() []types.Object {
 		allUnused = append(allUnused, unused...)
 	}
 	for _, pkg := range prog.Created {
-		unused := doPackage(prog, pkg)
+		unused := ctx.doPackage(prog, pkg)
 		allUnused = append(allUnused, unused...)
 	}
 	sort.Sort(objects(allUnused))
 	return allUnused
+}
+
+func isTestFuncByName(name string) bool {
+	return strings.HasPrefix(name, "Test") || strings.HasPrefix(name, "Benchmark") || strings.HasPrefix(name, "Example")
 }
 
 func (ctx *Context) doPackage(prog *loader.Program, pkg *loader.PackageInfo) []types.Object {
@@ -116,7 +120,7 @@ func (ctx *Context) doPackage(prog *loader.Program, pkg *loader.PackageInfo) []t
 		obj := global.Lookup(name)
 		_, isSig := obj.Type().(*types.Signature)
 		pos := ctx.pos(obj.Pos())
-		isTestMethod := isSig && strings.HasPrefix(obj.Name(), "Test") && strings.HasSuffix(pos.Filename, "_test.go")
+		isTestMethod := isSig && isTestFuncByName(obj.Name()) && strings.HasSuffix(pos.Filename, "_test.go")
 		if !used[obj] && ((pkg.Pkg.Name() == "main" && !isTestMethod) || !ast.IsExported(name)) {
 			unused = append(unused, obj)
 		}
